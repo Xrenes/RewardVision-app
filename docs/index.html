@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090b10">
+  <meta name="description" content="RewardVision is a tiny visual automation app for Windows. Capture a screen, choose a click point, and replay the workflow.">
+  <title>RewardVision — Visual automation, made simple</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="noise"></div>
+  <nav class="nav wrap">
+    <a class="brand" href="#top" aria-label="RewardVision home"><span class="brand-mark">R</span>RewardVision</a>
+    <div class="nav-links"><a href="#how">How it works</a><a href="#features">Features</a></div>
+    <a class="button button-small" href="https://github.com/Xrenes/rewardvision/releases/latest/download/RewardVision-Setup.exe">Download</a>
+  </nav>
+
+  <main id="top">
+    <section class="hero wrap">
+      <div class="hero-copy">
+        <div class="eyebrow"><span></span> Built for Windows 10 &amp; 11</div>
+        <h1>Teach your screen<br>to do the <em>repetitive.</em></h1>
+        <p class="lede">Capture each screen, point to the right spot, and let RewardVision replay the clicks for you. No scripts. No complicated setup.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/Xrenes/rewardvision/releases/latest/download/RewardVision-Setup.exe">Download for Windows <span>↓</span></a>
+          <a class="text-link" href="#how">See how it works <span>→</span></a>
+        </div>
+        <p class="microcopy">Version 1.0.0 · 64-bit · Free and open source</p>
+      </div>
+      <div class="app-scene" aria-label="RewardVision app preview">
+        <div class="orb orb-one"></div><div class="orb orb-two"></div>
+        <div class="app-window">
+          <div class="titlebar"><div class="traffic"><i></i><i></i><i></i></div><span>RewardVision</span><b>— &nbsp; □ &nbsp; ×</b></div>
+          <div class="app-body">
+            <div class="folder"><span>Workflow / Daily rewards</span><button>Choose Folder</button></div>
+            <div class="steps">
+              <div class="step active"><span class="thumb t1"></span><p><strong>001</strong> click (1240, 560)</p><i>✓</i></div>
+              <div class="step"><span class="thumb t2"></span><p><strong>002</strong> click (980, 430)</p><i>2</i></div>
+              <div class="step"><span class="thumb t3"></span><p><strong>003</strong> click (612, 720)</p><i>3</i></div>
+            </div>
+            <div class="controls"><button>+ Add Step</button><button>Delete Step</button><span></span><button class="run">▶ Run</button></div>
+            <div class="status"><i></i> Ready · 3 steps loaded</div>
+          </div>
+        </div>
+        <div class="float-card"><span>✓</span><p><strong>Step matched</strong><small>Click completed in 0.4s</small></p></div>
+      </div>
+    </section>
+
+    <section class="trust wrap"><p>Your workflow stays on your computer.</p><div><span>LOCAL ONLY</span><span>NO ACCOUNT</span><span>NO CLOUD</span></div></section>
+
+    <section class="how wrap" id="how">
+      <div class="section-head"><div><span class="kicker">THREE SIMPLE STEPS</span><h2>Record it once.<br>Run it whenever.</h2></div><p>RewardVision watches for each saved screen and clicks only when it finds a match.</p></div>
+      <div class="cards">
+        <article><span class="number">01</span><div class="icon">⌁</div><h3>Choose a folder</h3><p>Keep every workflow tidy and portable in its own folder.</p></article>
+        <article><span class="number">02</span><div class="icon">⌖</div><h3>Capture your steps</h3><p>Take a screenshot and click the exact point RewardVision should remember.</p></article>
+        <article><span class="number">03</span><div class="icon">▶</div><h3>Press Run</h3><p>The app recognizes each screen and completes your clicks in order.</p></article>
+      </div>
+    </section>
+
+    <section class="features wrap" id="features">
+      <div class="feature-copy"><span class="kicker">FOCUSED BY DESIGN</span><h2>Everything you need.<br>Nothing you don’t.</h2><p>A small, focused utility built to make repeatable on-screen routines painless.</p></div>
+      <div class="feature-list">
+        <div><span>◎</span><p><strong>Visual matching</strong><small>Waits until the right screen appears before clicking.</small></p></div>
+        <div><span>↗</span><p><strong>Pixel-precise clicks</strong><small>Records the exact position across your desktop.</small></p></div>
+        <div><span>◫</span><p><strong>Multi-monitor ready</strong><small>Captures the complete virtual desktop.</small></p></div>
+        <div><span>◇</span><p><strong>Portable workflows</strong><small>Your steps are simple PNG files in a folder.</small></p></div>
+      </div>
+    </section>
+
+    <section class="cta wrap"><div><span class="kicker">READY WHEN YOU ARE</span><h2>Give repetitive clicks<br>back to your computer.</h2><a class="button button-primary" href="https://github.com/Xrenes/rewardvision/releases/latest/download/RewardVision-Setup.exe">Download RewardVision <span>↓</span></a><p>Windows 10/11 · 64-bit</p></div></section>
+  </main>
+
+  <footer class="wrap"><a class="brand" href="#top"><span class="brand-mark">R</span>RewardVision</a><p>Simple visual automation for Windows.</p><a href="https://github.com/Xrenes/rewardvision">View source on GitHub ↗</a></footer>
+  <script src="script.js"></script>
+</body>
+</html>
