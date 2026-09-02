@@ -1,0 +1,30 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="RewardVision"
+    Version="1.0.1"
+    Manufacturer="Xrenes"
+    UpgradeCode="7F394095-BFA9-41EC-B272-C4F525881CB9"
+    Scope="perUser">
+
+    <SummaryInformation Description="RewardVision visual automation for Windows" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of RewardVision is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="LocalProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="RewardVision">
+          <Component Id="AppComponent" Guid="74B673A1-C784-48CD-B2D7-F633CF804876" Bitness="always64">
+            <File Id="AppExecutable" Source="dist\RewardVision.exe" KeyPath="yes" />
+            <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="RewardVision" Target="[#AppExecutable]" WorkingDirectory="INSTALLFOLDER" />
+            <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="RewardVision" Target="[#AppExecutable]" WorkingDirectory="INSTALLFOLDER" />
+            <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="RewardVision" Level="1">
+      <ComponentRef Id="AppComponent" />
+    </Feature>
+  </Package>
+</Wix>

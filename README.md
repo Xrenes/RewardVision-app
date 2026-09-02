@@ -1,6 +1,6 @@
 # RewardVision
 
-[Website](https://xrenes.github.io/rewardvision/) · [Download for Windows](https://github.com/Xrenes/rewardvision/releases/latest/download/RewardVision-Setup.exe)
+[Website](https://xrenes.github.io/rewardvision/) · [Download for Windows](https://github.com/Xrenes/rewardvision/releases/latest/download/RewardVision.msi)
 
 A tiny screenshot-and-click automator. One window.
 
@@ -34,6 +34,16 @@ Delete a PNG (or use **Delete Step**) to remove a step — the rest renumber.
 
 ```
 python app.py
+```
+
+## Build the Windows installer
+
+Install the WiX CLI and run the build script. It produces a self-contained,
+per-user 64-bit MSI at `release/RewardVision.msi`.
+
+```powershell
+dotnet tool install --global wix
+.\build.ps1
 ```
 
 The window uses the dark glassmorphic theme (`ui/theme.py`).
