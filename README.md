@@ -16,6 +16,19 @@ A tiny screenshot-and-click automator. One window.
 
 **Stop** aborts. So does **F9**, from anywhere — even with the game focused.
 
+## Watch mode
+
+When screens can arrive in any order and timers slip, the ordered list is
+the wrong tool. Tick **Watch mode** and every PNG in the folder becomes a
+*button*: the app scans the screen forever and clicks whichever button is
+showing (on the centre of the match), with a short per-button cooldown so
+one screen transition is not clicked repeatedly. No order, no timing, no
+per-step timeout — just "if a known button is on screen, click it".
+
+`examples/hazmob/` is a ready-made set for the Hazmob "Free Wall" reward
+loop (Watch → Claim Now → Continue playing, repeating). Point Watch mode
+at it and Run.
+
 Every click is a left click. That's the whole feature set.
 
 ## Step format
