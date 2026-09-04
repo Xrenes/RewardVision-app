@@ -72,6 +72,15 @@ POLL_INTERVAL_S = 0.4
 # still be trusted (screen pixels). Beyond this we fall back to the
 # recorded point — the template probably matched something incidental.
 CLICK_SNAP_PX = 220
+
+# --- Watch mode --------------------------------------------------------
+# No order, no timers. Every PNG in the folder is a button. The loop scans
+# the screen forever; whenever a button image is on screen it clicks the
+# centre of the match, then ignores that same button for a short cooldown
+# so a screen transition doesn't cause a burst of clicks.
+WATCH_POLL_S = 0.35        # gap between screen scans
+WATCH_COOLDOWN_S = 4.0     # per-button quiet time after a click
+WATCH_MATCH_THRESHOLD = 0.83  # a touch stricter — tight button crops
 _FILENAME_RE = re.compile(
     r"^(\d+)_x(-?\d+)_y(-?\d+)(_opt)?\.png$", re.IGNORECASE
 )
@@ -360,6 +369,104 @@ def _load_bgr(path: Path) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# Watch-mode runner — button set, no order, no timing
+# ---------------------------------------------------------------------------
+
+
+class WatchRunner(QThread):
+    """Loop forever. Every ``*.png`` in the folder is a button image.
+
+    On each scan, for every button not on cooldown, look for it on screen;
+    if it is there, click the centre of the match and put that button on a
+    short cooldown. Nothing about order or elapsed time matters — the same
+    button reappearing later is clicked again once its cooldown lapses.
+    """
+
+    progress = Signal(str)
+    finished_ok = Signal(str)
+
+    def __init__(self, folder: Path) -> None:
+        super().__init__()
+        self._folder = folder
+        self._running = False
+
+    def stop(self) -> None:
+        self._running = False
+
+    def _sleep_interruptible(self, seconds: float) -> None:
+        end = time.monotonic() + seconds
+        while self._running and time.monotonic() < end:
+            time.sleep(min(0.1, max(0.0, end - time.monotonic())))
+
+    def run(self) -> None:  # noqa: D401
+        self._running = True
+
+        buttons: list[tuple[str, np.ndarray]] = []
+        for p in sorted(self._folder.glob("*.png")):
+            try:
+                buttons.append((p.stem, _load_bgr(p)))
+            except Exception as exc:  # noqa: BLE001
+                self.finished_ok.emit(f"Bad button image {p.name}: {exc}")
+                return
+        if not buttons:
+            self.finished_ok.emit("No button images (*.png) in that folder.")
+            return
+
+        try:
+            from pynput.mouse import Button, Controller
+
+            mouse = Controller()
+        except Exception as exc:  # noqa: BLE001
+            self.finished_ok.emit(f"Mouse control unavailable: {exc}")
+            return
+
+        try:
+            engine = CaptureEngine(region=virtual_desktop_bounds())
+        except Exception as exc:  # noqa: BLE001
+            self.finished_ok.emit(f"Screen capture failed: {exc}")
+            return
+
+        next_ok: dict[str, float] = {name: 0.0 for name, _ in buttons}
+        clicks = 0
+        names = ", ".join(n for n, _ in buttons)
+        self.progress.emit(f"Watching for: {names}")
+
+        try:
+            while self._running:
+                now = time.monotonic()
+                frame = engine.capture_frame()
+                acted = False
+                for name, tpl in buttons:
+                    if not self._running:
+                        break
+                    if now < next_ok[name]:
+                        continue
+                    det = detect_template(
+                        frame.image, tpl, WATCH_MATCH_THRESHOLD
+                    )
+                    if not det.found:
+                        continue
+                    cx = frame.region["left"] + det.x + det.width // 2
+                    cy = frame.region["top"] + det.y + det.height // 2
+                    mouse.position = (cx, cy)
+                    time.sleep(0.05)
+                    mouse.click(Button.left, 1)
+                    clicks += 1
+                    next_ok[name] = time.monotonic() + WATCH_COOLDOWN_S
+                    self.progress.emit(
+                        f"Clicked '{name}' at ({cx}, {cy})  ·  {clicks} total"
+                    )
+                    acted = True
+                    time.sleep(0.35)  # let the screen start changing
+                    break  # rescan from the top after any click
+                if not acted:
+                    self._sleep_interruptible(WATCH_POLL_S)
+            self.finished_ok.emit(f"Stopped. {clicks} click(s) this run.")
+        finally:
+            engine.close()
+
+
+# ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
 
@@ -371,7 +478,7 @@ class Window(QWidget):
         self.setWindowTitle(APP_NAME)
         self.resize(540, 520)
         self._folder: Path | None = None
-        self._runner: Runner | None = None
+        self._runner: Runner | WatchRunner | None = None
         self._overlay: CaptureOverlay | None = None
         self._hotkey = None  # pynput keyboard listener, if available
 
@@ -411,6 +518,12 @@ class Window(QWidget):
 
         # loop options row
         lrow = QHBoxLayout()
+        self._watch_cb = QCheckBox("Watch mode")
+        self._watch_cb.setToolTip(
+            "Ignore order and timing. Every PNG in the folder is a button; "
+            "click whichever one is on screen, forever."
+        )
+        self._watch_cb.toggled.connect(self._on_watch_toggled)
         self._repeat_cb = QCheckBox("Repeat")
         self._repeat_cb.toggled.connect(self._on_repeat_toggled)
         self._wait_label = QLabel("wait")
@@ -421,6 +534,8 @@ class Window(QWidget):
         self._wait_spin.setSuffix(" s")
         self._wait_spin.setSingleStep(10)
         self._wait_spin.setEnabled(False)
+        lrow.addWidget(self._watch_cb)
+        lrow.addSpacing(16)
         lrow.addWidget(self._repeat_cb)
         lrow.addWidget(self._wait_label)
         lrow.addWidget(self._wait_spin)
@@ -573,11 +688,38 @@ class Window(QWidget):
     # -- loop options -------------------------------------------------
 
     def _on_repeat_toggled(self, on: bool) -> None:
-        self._wait_spin.setEnabled(on and self._runner is None)
-        if on:
+        self._wait_spin.setEnabled(
+            on and self._runner is None and not self._watch_cb.isChecked()
+        )
+        if on and not self._watch_cb.isChecked():
             self._status.setText(
                 "Repeat on — after the last step it waits, then runs again. "
                 "F9 or Stop to end."
+            )
+
+    def _on_watch_toggled(self, on: bool) -> None:
+        """Watch mode ignores the ordered step list entirely."""
+        for w in (
+            self._list,
+            self._add_btn,
+            self._del_btn,
+            self._opt_btn,
+            self._repeat_cb,
+            self._wait_spin,
+            self._wait_label,
+        ):
+            w.setEnabled(not on if w is not self._list else True)
+        self._list.setEnabled(not on)
+        if on:
+            self._status.setText(
+                "Watch mode — every PNG in the folder is a button. Run, and it "
+                "clicks whichever button is on screen, forever. F9 or Stop ends it."
+            )
+        else:
+            self._status.setText(
+                f"{self._list.count()} step(s) loaded."
+                if self._folder
+                else "Choose a folder to begin.  ·  F9 stops from anywhere."
             )
 
     # -- global hotkey ----------------------------------------------
@@ -610,15 +752,30 @@ class Window(QWidget):
     def _run(self) -> None:
         if not self._folder:
             return
-        steps = load_steps(self._folder)
-        if not steps:
-            QMessageBox.information(self, APP_NAME, "No steps to run. Add one first.")
-            return
-        self._runner = Runner(
-            steps,
-            repeat=self._repeat_cb.isChecked(),
-            wait_s=self._wait_spin.value(),
-        )
+
+        if self._watch_cb.isChecked():
+            pngs = list(self._folder.glob("*.png"))
+            if not pngs:
+                QMessageBox.information(
+                    self, APP_NAME,
+                    "Watch mode needs button images. Put one PNG per button "
+                    "in the folder (crop it tight to just the button).",
+                )
+                return
+            self._runner = WatchRunner(self._folder)
+        else:
+            steps = load_steps(self._folder)
+            if not steps:
+                QMessageBox.information(
+                    self, APP_NAME, "No steps to run. Add one first."
+                )
+                return
+            self._runner = Runner(
+                steps,
+                repeat=self._repeat_cb.isChecked(),
+                wait_s=self._wait_spin.value(),
+            )
+
         self._runner.progress.connect(self._status.setText)
         self._runner.finished_ok.connect(self._on_finished)
         self._set_running(True)
@@ -644,13 +801,15 @@ class Window(QWidget):
 
     def _set_running(self, running: bool) -> None:
         ready = self._folder is not None
+        watch = self._watch_cb.isChecked()
         self._run_btn.setEnabled(not running and ready)
-        self._add_btn.setEnabled(not running and ready)
-        self._del_btn.setEnabled(not running and ready)
-        self._opt_btn.setEnabled(not running and ready)
-        self._repeat_cb.setEnabled(not running)
+        self._watch_cb.setEnabled(not running)
+        for w in (self._add_btn, self._del_btn, self._opt_btn):
+            w.setEnabled(not running and ready and not watch)
+        self._list.setEnabled(not running and not watch)
+        self._repeat_cb.setEnabled(not running and not watch)
         self._wait_spin.setEnabled(
-            not running and self._repeat_cb.isChecked()
+            not running and not watch and self._repeat_cb.isChecked()
         )
         self._stop_btn.setEnabled(running)
 
