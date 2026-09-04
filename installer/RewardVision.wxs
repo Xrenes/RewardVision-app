@@ -6,8 +6,12 @@
     UpgradeCode="7F394095-BFA9-41EC-B272-C4F525881CB9"
     Scope="perUser">
 
-    <SummaryInformation Description="RewardVision visual automation for Windows" />
-    <MajorUpgrade DowngradeErrorMessage="A newer version of RewardVision is already installed." />
+    <SummaryInformation Description="RewardVision — one-button Hazmob reward collector" />
+    <!-- AllowSameVersionUpgrades: reinstalling the same version replaces the
+         existing install instead of stacking a second entry. -->
+    <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
+      DowngradeErrorMessage="A newer version of RewardVision is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <StandardDirectory Id="LocalAppDataFolder">
