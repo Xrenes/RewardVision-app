@@ -1,5 +1,7 @@
 # RewardVision
 
+**[Download the installer](https://github.com/Xrenes/RewardVision-app/releases/latest/download/RewardVision.msi)** · Windows 10/11 64-bit · no Python required
+
 One button. Press **Start** and RewardVision watches the whole screen; when
 one of its bundled buttons is showing, it clicks it — `Watch` on Hazmob's
 Free Wall, `CLAIM NOW!` on the reward popup, `Continue playing` on the ad.
@@ -18,18 +20,27 @@ few seconds so one screen transition is not clicked repeatedly.
 To teach it another button — a different ad's continue button, say — drop
 a tight PNG crop of just that button into `examples/hazmob/`.
 
+## Install
+
+Download **[RewardVision.msi](https://github.com/Xrenes/RewardVision-app/releases/latest/download/RewardVision.msi)**
+and run it. Per-user install, no admin prompt; adds Desktop and Start-menu
+shortcuts. Everything is bundled — Python, Qt, OpenCV, the Visual C++
+runtime — so it runs on a machine that has never had any of them.
+
+`SHA-256` of 1.0.2:
+`3156FBF169504EDFAB5F7AEC277EAEDC819E0A91AD0BE0B2C06EDD18471C5B2D`
+
 ## Requirements
 
-- Windows 10 / 11, Python 3.12+
-- `pip install -r requirements.txt`
-- Buttons are captured at **1920×1080**. Other resolutions need re-cropped
-  button images at that size.
+- Windows 10 / 11, 64-bit
+- Play the game at **1920×1080** (bundled button images are that size)
 - Keep the game window visible and unobscured while it runs — matching
-  reads screen pixels.
+  reads screen pixels
 
-## Run
+## Run from source
 
 ```
+pip install -r requirements.txt
 python app.py
 ```
 
