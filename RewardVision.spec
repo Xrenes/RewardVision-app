@@ -1,5 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+# One-dir, windowed build. UPX is OFF on purpose: compressing Qt / Python
+# DLLs is a common cause of crashes and antivirus false positives on
+# machines other than the build host.
+
 a = Analysis(
     ["launcher.py"],
     pathex=[],
@@ -9,8 +13,16 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        "tkinter",
+        "unittest",
+        "pydoc",
+        "pytest",
+        "setuptools",
+        "pip",
+    ],
     noarchive=False,
+    optimize=1,
 )
 pyz = PYZ(a.pure)
 exe = EXE(
@@ -22,7 +34,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
 )
 coll = COLLECT(
@@ -30,6 +42,6 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     name="RewardVision",
 )

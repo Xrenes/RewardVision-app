@@ -7,15 +7,29 @@ only touched once, at startup.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 from loguru import logger
 
-# Project root = parent of the ``services`` package directory.
-from core.paths import data_path
+from core.paths import data_path, is_frozen
 
-_LOG_DIR = data_path("logs")
+
+def _log_dir() -> Path:
+    """A directory we can actually write to on any machine.
+
+    Frozen installs may sit under a read-only path, so logs go to
+    ``%LOCALAPPDATA%\\RewardVision\\logs`` there; from source they stay in
+    the project's ``logs/`` folder.
+    """
+    if is_frozen():
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home())
+        return Path(base) / "RewardVision" / "logs"
+    return data_path("logs")
+
+
+_LOG_DIR = _log_dir()
 
 _CONSOLE_FORMAT = (
     "<green>{time:HH:mm:ss}</green> | "
@@ -50,18 +64,22 @@ def setup_logging(*, level: str = "INFO", save_to_file: bool = True) -> "logger"
         logger.add(sys.stderr, level=level, format=_CONSOLE_FORMAT, enqueue=True)
 
     if save_to_file:
-        _LOG_DIR.mkdir(parents=True, exist_ok=True)
-        logger.add(
-            _LOG_DIR / "rewardvision_{time:YYYY-MM-DD}.log",
-            level="DEBUG",
-            format=_FILE_FORMAT,
-            rotation="5 MB",
-            retention="14 days",
-            compression="zip",
-            enqueue=True,
-            backtrace=False,
-            diagnose=False,
-        )
+        try:
+            _LOG_DIR.mkdir(parents=True, exist_ok=True)
+            logger.add(
+                _LOG_DIR / "rewardvision_{time:YYYY-MM-DD}.log",
+                level="DEBUG",
+                format=_FILE_FORMAT,
+                rotation="5 MB",
+                retention="14 days",
+                compression="zip",
+                enqueue=True,
+                backtrace=False,
+                diagnose=False,
+            )
+        except OSError:
+            # A missing / unwritable log location must never stop the app.
+            pass
 
     _configured = True
     logger.debug("Logging initialised (level={}, file={})", level, save_to_file)
