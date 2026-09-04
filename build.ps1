@@ -10,13 +10,14 @@ if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed ($LASTEXITCODE)" }
 $exe = Join-Path $projectDir "dist\RewardVision\RewardVision.exe"
 if (-not (Test-Path $exe)) { throw "Build produced no exe at $exe" }
 
-# Sanity: the runtime C++ libraries Qt needs must be in the bundle.
+# Sanity: the runtime C++ libraries Qt needs must be somewhere in the
+# bundle (spec puts them at _internal root; PySide6 also carries copies).
 $internal = Join-Path $projectDir "dist\RewardVision\_internal"
 foreach ($dll in @("VCRUNTIME140.dll", "VCRUNTIME140_1.dll", "MSVCP140.dll")) {
-    if (-not (Test-Path (Join-Path $internal $dll))) {
-        Write-Warning "Expected runtime library missing from bundle: $dll"
-    }
+    $hit = Get-ChildItem -Path $internal -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $hit) { throw "Runtime library not found anywhere in bundle: $dll" }
 }
+Write-Host "VC++ runtime DLLs present in bundle."
 
 # --- 2. MSI --------------------------------------------------------------
 $localDotnet = Join-Path $env:LOCALAPPDATA "Microsoft\dotnet"
