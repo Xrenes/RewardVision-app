@@ -2,15 +2,25 @@
 
 One window. Pick a folder. Each step is a full-screen screenshot plus one
 click position (always a left click). Run watches the screen for each
-step's screenshot in order and clicks when it appears; it goes through the
-list once and stops.
+step's screenshot in order and clicks when it appears.
+
+By default it goes through the list once and stops. Tick **Repeat** and it
+loops forever, waiting the given number of seconds between passes — the
+intent behind the name: leave it collecting a game's timed rewards.
 
 Steps are stored in the chosen folder as PNG files named
 
-    001_x1240_y560.png
+    001_x1240_y560.png        # required: click screen (1240, 560)
+    003_x0980_y430_opt.png    # "_opt": skip this step if not found in time
 
 — the number sets the order, the ``x`` / ``y`` are the click position in
-screen pixels. That's the whole format; the folder is self-contained.
+screen pixels, and a trailing ``_opt`` marks the step optional (a missing
+optional step is skipped instead of aborting the pass; use it for the
+"Continue" button of an ad that only appears sometimes). When a step is
+found, the click lands on the *centre of the match* if that is close to
+the recorded point, otherwise on the recorded point itself.
+
+Press **F9** at any time — even with the game focused — to stop.
 
 Run from the project root:
 
@@ -38,6 +48,7 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QMouseEvent, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -45,6 +56,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -56,7 +68,13 @@ APP_NAME = "RewardVision"
 MATCH_THRESHOLD = 0.80
 STEP_TIMEOUT_S = 20.0
 POLL_INTERVAL_S = 0.4
-_FILENAME_RE = re.compile(r"^(\d+)_x(-?\d+)_y(-?\d+)\.png$", re.IGNORECASE)
+# How far the centre of a match may sit from the recorded click point and
+# still be trusted (screen pixels). Beyond this we fall back to the
+# recorded point — the template probably matched something incidental.
+CLICK_SNAP_PX = 220
+_FILENAME_RE = re.compile(
+    r"^(\d+)_x(-?\d+)_y(-?\d+)(_opt)?\.png$", re.IGNORECASE
+)
 
 
 # ---------------------------------------------------------------------------
@@ -65,15 +83,19 @@ _FILENAME_RE = re.compile(r"^(\d+)_x(-?\d+)_y(-?\d+)\.png$", re.IGNORECASE)
 
 
 class Step:
-    def __init__(self, path: Path, order: int, x: int, y: int) -> None:
+    def __init__(
+        self, path: Path, order: int, x: int, y: int, optional: bool = False
+    ) -> None:
         self.path = path
         self.order = order
         self.x = x
         self.y = y
+        self.optional = optional
 
     @property
     def label(self) -> str:
-        return f"{self.order:03d}   click ({self.x}, {self.y})"
+        tag = "  ·  optional" if self.optional else ""
+        return f"{self.order:03d}   click ({self.x}, {self.y}){tag}"
 
 
 def load_steps(folder: Path) -> list[Step]:
@@ -81,7 +103,15 @@ def load_steps(folder: Path) -> list[Step]:
     for p in sorted(folder.glob("*.png")):
         m = _FILENAME_RE.match(p.name)
         if m:
-            steps.append(Step(p, int(m.group(1)), int(m.group(2)), int(m.group(3))))
+            steps.append(
+                Step(
+                    p,
+                    int(m.group(1)),
+                    int(m.group(2)),
+                    int(m.group(3)),
+                    optional=bool(m.group(4)),
+                )
+            )
     steps.sort(key=lambda s: s.order)
     return steps
 
@@ -93,7 +123,7 @@ def next_order(folder: Path) -> int:
 
 def save_step(folder: Path, image_bgr: np.ndarray, x: int, y: int) -> Path:
     order = next_order(folder)
-    path = folder / f"{order:03d}_x{x}_y{y}.png"
+    path = folder / _step_filename(order, x, y, optional=False)
     from PIL import Image
 
     rgb = np.ascontiguousarray(image_bgr[:, :, ::-1])
@@ -101,13 +131,27 @@ def save_step(folder: Path, image_bgr: np.ndarray, x: int, y: int) -> Path:
     return path
 
 
+def _step_filename(order: int, x: int, y: int, optional: bool) -> str:
+    return f"{order:03d}_x{x}_y{y}{'_opt' if optional else ''}.png"
+
+
 def renumber(folder: Path) -> None:
     """Close gaps after a delete so orders stay 1..N."""
     steps = load_steps(folder)
     for i, s in enumerate(steps, start=1):
-        want = folder / f"{i:03d}_x{s.x}_y{s.y}.png"
+        want = folder / _step_filename(i, s.x, s.y, s.optional)
         if want != s.path:
             s.path.rename(want)
+
+
+def set_step_optional(step: Step, optional: bool) -> Path:
+    """Rename a step's PNG to add or drop the ``_opt`` marker."""
+    want = step.path.with_name(
+        _step_filename(step.order, step.x, step.y, optional)
+    )
+    if want != step.path:
+        step.path.rename(want)
+    return want
 
 
 # ---------------------------------------------------------------------------
@@ -184,13 +228,79 @@ class Runner(QThread):
     progress = Signal(str)
     finished_ok = Signal(str)
 
-    def __init__(self, steps: list[Step]) -> None:
+    def __init__(
+        self, steps: list[Step], *, repeat: bool = False, wait_s: int = 120
+    ) -> None:
         super().__init__()
         self._steps = steps
+        self._repeat = repeat
+        self._wait_s = max(0, int(wait_s))
         self._running = False
 
     def stop(self) -> None:
         self._running = False
+
+    # -- helpers ---------------------------------------------------------
+
+    def _sleep_interruptible(self, seconds: float) -> None:
+        """Sleep in short slices so Stop / F9 takes effect promptly."""
+        end = time.monotonic() + seconds
+        while self._running and time.monotonic() < end:
+            time.sleep(min(0.2, end - time.monotonic()))
+
+    def _click_point(self, step: Step, det) -> tuple[int, int]:
+        """Where to actually click: the match centre when it is near the
+        recorded point, otherwise the recorded point."""
+        cx = det.x + det.width // 2
+        cy = det.y + det.height // 2
+        if abs(cx - step.x) <= CLICK_SNAP_PX and abs(cy - step.y) <= CLICK_SNAP_PX:
+            return cx, cy
+        return step.x, step.y
+
+    def _run_one_pass(self, engine, mouse, Button) -> str | None:
+        """Execute every step once. Return an error string to abort the
+        whole run, or None to carry on (loop or finish normally)."""
+        total = len(self._steps)
+        for i, step in enumerate(self._steps, start=1):
+            if not self._running:
+                return None
+            try:
+                template = _load_bgr(step.path)
+            except Exception as exc:  # noqa: BLE001
+                return f"Step {i}: bad image ({exc})"
+
+            kind = "optional " if step.optional else ""
+            self.progress.emit(f"Waiting for {kind}step {i}/{total}…")
+            deadline = time.monotonic() + STEP_TIMEOUT_S
+            det = None
+            while self._running and time.monotonic() < deadline:
+                frame = engine.capture_frame()
+                d = detect_template(frame.image, template, MATCH_THRESHOLD)
+                if d.found:
+                    det = d
+                    break
+                time.sleep(POLL_INTERVAL_S)
+
+            if not self._running:
+                return None
+            if det is None:
+                if step.optional:
+                    self.progress.emit(f"Step {i}/{total} not shown — skipped.")
+                    continue
+                return (
+                    f"Step {i} not found on screen after "
+                    f"{STEP_TIMEOUT_S:.0f}s — stopped."
+                )
+
+            x, y = self._click_point(step, det)
+            mouse.position = (x, y)
+            time.sleep(0.05)
+            mouse.click(Button.left, 1)
+            self.progress.emit(f"Clicked step {i}/{total} at ({x}, {y})")
+            time.sleep(0.3)
+        return None
+
+    # -- thread body ---------------------------------------------------
 
     def run(self) -> None:  # noqa: D401
         self._running = True
@@ -208,43 +318,35 @@ class Runner(QThread):
             self.finished_ok.emit(f"Screen capture failed: {exc}")
             return
 
+        cycles = 0
         try:
-            for i, step in enumerate(self._steps, start=1):
+            while self._running:
+                err = self._run_one_pass(engine, mouse, Button)
+                if err is not None:
+                    self.finished_ok.emit(err)
+                    return
                 if not self._running:
-                    self.finished_ok.emit("Stopped.")
-                    return
-                try:
-                    template = _load_bgr(step.path)
-                except Exception as exc:  # noqa: BLE001
-                    self.finished_ok.emit(f"Step {i}: bad image ({exc})")
-                    return
-
-                self.progress.emit(f"Waiting for step {i}/{len(self._steps)}…")
-                deadline = time.monotonic() + STEP_TIMEOUT_S
-                seen = False
-                while self._running and time.monotonic() < deadline:
-                    frame = engine.capture_frame()
-                    if detect_template(frame.image, template, MATCH_THRESHOLD).found:
-                        seen = True
-                        break
-                    time.sleep(POLL_INTERVAL_S)
-
-                if not self._running:
-                    self.finished_ok.emit("Stopped.")
-                    return
-                if not seen:
                     self.finished_ok.emit(
-                        f"Step {i} not found on screen after {STEP_TIMEOUT_S:.0f}s — stopped."
+                        f"Stopped after {cycles} full cycle(s)."
+                        if cycles
+                        else "Stopped."
                     )
                     return
-
-                mouse.position = (step.x, step.y)
-                time.sleep(0.05)
-                mouse.click(Button.left, 1)
-                self.progress.emit(f"Clicked step {i}/{len(self._steps)} at ({step.x}, {step.y})")
-                time.sleep(0.3)
-
-            self.finished_ok.emit("Done — all steps completed.")
+                cycles += 1
+                if not self._repeat:
+                    self.finished_ok.emit("Done — all steps completed.")
+                    return
+                mins = self._wait_s / 60
+                self.progress.emit(
+                    f"Cycle {cycles} done. Waiting {self._wait_s}s "
+                    f"(~{mins:.1f} min) before the next…"
+                )
+                self._sleep_interruptible(self._wait_s)
+            self.finished_ok.emit(
+                f"Stopped after {cycles} full cycle(s)."
+                if cycles
+                else "Stopped."
+            )
         finally:
             engine.close()
 
@@ -271,6 +373,7 @@ class Window(QWidget):
         self._folder: Path | None = None
         self._runner: Runner | None = None
         self._overlay: CaptureOverlay | None = None
+        self._hotkey = None  # pynput keyboard listener, if available
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -298,10 +401,31 @@ class Window(QWidget):
         self._add_btn.clicked.connect(self._add_step)
         self._del_btn = QPushButton("Delete Step")
         self._del_btn.clicked.connect(self._delete_step)
+        self._opt_btn = QPushButton("Toggle Optional")
+        self._opt_btn.clicked.connect(self._toggle_optional)
         srow.addWidget(self._add_btn)
         srow.addWidget(self._del_btn)
+        srow.addWidget(self._opt_btn)
         srow.addStretch(1)
         root.addLayout(srow)
+
+        # loop options row
+        lrow = QHBoxLayout()
+        self._repeat_cb = QCheckBox("Repeat")
+        self._repeat_cb.toggled.connect(self._on_repeat_toggled)
+        self._wait_label = QLabel("wait")
+        self._wait_label.setObjectName("Status")
+        self._wait_spin = QSpinBox()
+        self._wait_spin.setRange(0, 24 * 60 * 60)
+        self._wait_spin.setValue(120)
+        self._wait_spin.setSuffix(" s")
+        self._wait_spin.setSingleStep(10)
+        self._wait_spin.setEnabled(False)
+        lrow.addWidget(self._repeat_cb)
+        lrow.addWidget(self._wait_label)
+        lrow.addWidget(self._wait_spin)
+        lrow.addStretch(1)
+        root.addLayout(lrow)
 
         # run row
         rrow = QHBoxLayout()
@@ -317,11 +441,12 @@ class Window(QWidget):
         rrow.addStretch(1)
         root.addLayout(rrow)
 
-        self._status = QLabel("Choose a folder to begin.")
+        self._status = QLabel("Choose a folder to begin.  ·  F9 stops from anywhere.")
         self._status.setObjectName("Status")
         root.addWidget(self._status)
 
         self._set_controls(folder_ready=False)
+        self._install_hotkey()
 
     # -- folder -----------------------------------------------------------
 
@@ -423,6 +548,63 @@ class Window(QWidget):
         self._reload()
         self._status.setText(f"{self._list.count()} step(s).")
 
+    def _toggle_optional(self) -> None:
+        """Flip the selected step between required and optional (``_opt``)."""
+        if not self._folder:
+            return
+        item = self._list.currentItem()
+        if item is None:
+            self._status.setText("Select a step first.")
+            return
+        sel = Path(item.data(Qt.ItemDataRole.UserRole))
+        steps = load_steps(self._folder)
+        step = next((s for s in steps if s.path == sel), None)
+        if step is None:
+            return
+        try:
+            set_step_optional(step, not step.optional)
+        except OSError as exc:
+            QMessageBox.warning(self, APP_NAME, f"Could not rename step:\n{exc}")
+            return
+        self._reload()
+        now = "optional" if not step.optional else "required"
+        self._status.setText(f"Step {step.order:03d} is now {now}.")
+
+    # -- loop options -------------------------------------------------
+
+    def _on_repeat_toggled(self, on: bool) -> None:
+        self._wait_spin.setEnabled(on and self._runner is None)
+        if on:
+            self._status.setText(
+                "Repeat on — after the last step it waits, then runs again. "
+                "F9 or Stop to end."
+            )
+
+    # -- global hotkey ----------------------------------------------
+
+    def _install_hotkey(self) -> None:
+        """Listen for F9 process-wide so the run can be stopped even when
+        the game window has focus. Best-effort: if pynput's listener will
+        not start, the on-screen Stop button still works."""
+        try:
+            from pynput import keyboard
+        except Exception:  # noqa: BLE001
+            return
+
+        def _on_press(key) -> None:
+            if key == keyboard.Key.f9:
+                # Called from the listener thread; hop to the GUI thread.
+                from PySide6.QtCore import QTimer
+
+                QTimer.singleShot(0, self._stop)
+
+        try:
+            self._hotkey = keyboard.Listener(on_press=_on_press)
+            self._hotkey.daemon = True
+            self._hotkey.start()
+        except Exception:  # noqa: BLE001
+            self._hotkey = None
+
     # -- run ------------------------------------------------------------
 
     def _run(self) -> None:
@@ -432,7 +614,11 @@ class Window(QWidget):
         if not steps:
             QMessageBox.information(self, APP_NAME, "No steps to run. Add one first.")
             return
-        self._runner = Runner(steps)
+        self._runner = Runner(
+            steps,
+            repeat=self._repeat_cb.isChecked(),
+            wait_s=self._wait_spin.value(),
+        )
         self._runner.progress.connect(self._status.setText)
         self._runner.finished_ok.connect(self._on_finished)
         self._set_running(True)
@@ -453,19 +639,30 @@ class Window(QWidget):
     # -- control state -------------------------------------------------
 
     def _set_controls(self, *, folder_ready: bool) -> None:
-        for b in (self._add_btn, self._del_btn, self._run_btn):
+        for b in (self._add_btn, self._del_btn, self._opt_btn, self._run_btn):
             b.setEnabled(folder_ready)
 
     def _set_running(self, running: bool) -> None:
-        self._run_btn.setEnabled(not running and self._folder is not None)
-        self._add_btn.setEnabled(not running and self._folder is not None)
-        self._del_btn.setEnabled(not running and self._folder is not None)
+        ready = self._folder is not None
+        self._run_btn.setEnabled(not running and ready)
+        self._add_btn.setEnabled(not running and ready)
+        self._del_btn.setEnabled(not running and ready)
+        self._opt_btn.setEnabled(not running and ready)
+        self._repeat_cb.setEnabled(not running)
+        self._wait_spin.setEnabled(
+            not running and self._repeat_cb.isChecked()
+        )
         self._stop_btn.setEnabled(running)
 
     def closeEvent(self, e) -> None:  # noqa: N802
         if self._runner:
             self._runner.stop()
             self._runner.wait(2000)
+        if self._hotkey is not None:
+            try:
+                self._hotkey.stop()
+            except Exception:  # noqa: BLE001
+                pass
         super().closeEvent(e)
 
 
