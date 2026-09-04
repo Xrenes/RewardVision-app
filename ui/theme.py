@@ -25,6 +25,7 @@ def build_qss() -> str:
 
     QWidget#Root {{ background-color: {c['bg']}; }}
 
+    QLabel#Title {{ color: {c['text']}; font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }}
     QLabel#FolderPath {{ color: {c['text_muted']}; }}
     QLabel#FolderPathSet {{ color: {c['text']}; }}
     QLabel#Status {{ color: {c['text_muted']}; font-size: 12px; }}
