@@ -45,7 +45,9 @@ def setup_logging(*, level: str = "INFO", save_to_file: bool = True) -> "logger"
         return logger
 
     logger.remove()
-    logger.add(sys.stderr, level=level, format=_CONSOLE_FORMAT, enqueue=True)
+    # In a windowed PyInstaller build there is no console, so sys.stderr is None.
+    if sys.stderr is not None:
+        logger.add(sys.stderr, level=level, format=_CONSOLE_FORMAT, enqueue=True)
 
     if save_to_file:
         _LOG_DIR.mkdir(parents=True, exist_ok=True)

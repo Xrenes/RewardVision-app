@@ -13,5 +13,5 @@ $wix = Get-Command wix.exe -ErrorAction SilentlyContinue
 if (-not $wix) { throw "WiX CLI is required. Install it with: dotnet tool install --global wix" }
 
 New-Item -ItemType Directory -Force -Path release | Out-Null
-& $wix.Source build installer\RewardVision.wxs -arch x64 -o release\RewardVision.msi
+& $wix.Source build installer\RewardVision.wxs -arch x64 -bindpath "appdir=$(Join-Path $projectDir 'dist\RewardVision')" -o release\RewardVision.msi
 Write-Host "Built release\RewardVision.msi"

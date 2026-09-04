@@ -1,7 +1,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
     Name="RewardVision"
-    Version="1.0.1"
+    Version="1.0.2"
     Manufacturer="Xrenes"
     UpgradeCode="7F394095-BFA9-41EC-B272-C4F525881CB9"
     Scope="perUser">
@@ -12,19 +12,28 @@
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="LocalProgramsFolder" Name="Programs">
-        <Directory Id="INSTALLFOLDER" Name="RewardVision">
-          <Component Id="AppComponent" Guid="74B673A1-C784-48CD-B2D7-F633CF804876" Bitness="always64">
-            <File Id="AppExecutable" Source="dist\RewardVision.exe" KeyPath="yes" />
-            <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="RewardVision" Target="[#AppExecutable]" WorkingDirectory="INSTALLFOLDER" />
-            <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="RewardVision" Target="[#AppExecutable]" WorkingDirectory="INSTALLFOLDER" />
-            <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
-          </Component>
-        </Directory>
+        <Directory Id="INSTALLFOLDER" Name="RewardVision" />
       </Directory>
     </StandardDirectory>
 
+    <!-- The launcher executable: keyed component that owns the shortcuts. -->
+    <Component Id="AppComponent" Directory="INSTALLFOLDER" Guid="74B673A1-C784-48CD-B2D7-F633CF804876" Bitness="always64">
+      <File Id="AppExecutable" Source="!(bindpath.appdir)\RewardVision.exe" KeyPath="yes" />
+      <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="RewardVision" Target="[#AppExecutable]" WorkingDirectory="INSTALLFOLDER" />
+      <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="RewardVision" Target="[#AppExecutable]" WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+    </Component>
+
+    <!-- Everything else PyInstaller produced under dist\RewardVision. -->
+    <ComponentGroup Id="RuntimeFiles" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.appdir)\**">
+        <Exclude Files="!(bindpath.appdir)\RewardVision.exe" />
+      </Files>
+    </ComponentGroup>
+
     <Feature Id="MainFeature" Title="RewardVision" Level="1">
       <ComponentRef Id="AppComponent" />
+      <ComponentGroupRef Id="RuntimeFiles" />
     </Feature>
   </Package>
 </Wix>
