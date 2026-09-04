@@ -1,7 +1,5 @@
 # RewardVision
 
-[Website](https://xrenes.github.io/rewardvision/) · [Download for Windows](https://github.com/Xrenes/rewardvision/releases/latest/download/RewardVision.msi)
-
 One button. Press **Start** and RewardVision watches the whole screen; when
 one of its bundled buttons is showing, it clicks it — `Watch` on Hazmob's
 Free Wall, `CLAIM NOW!` on the reward popup, `Continue playing` on the ad.

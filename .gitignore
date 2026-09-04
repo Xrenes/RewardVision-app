@@ -4,8 +4,7 @@ __pycache__/
 build/
 dist/
 logs/
-release/*
-*.spec.bak
-# stray capture screenshots
-[0-9][0-9][0-9]_x*_y*.png
+release/
+*.wixpdb
+# raw screen captures used while cropping button images
 Screenshot*.png
